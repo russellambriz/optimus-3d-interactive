@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="Interactive 3D model of the Tesla Optimus humanoid robot, built procedurally with Three.js." />
+    <meta name="theme-color" content="#0a0c11" />
+    <title>Optimus · Interactive 3D</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230a0c11'/><ellipse cx='16' cy='15' rx='8' ry='9.5' fill='%23f2f3f5'/><path d='M8.4 13.5a8 9 0 0 1 15.2 0v4.5a8 7 0 0 1-15.2 0z' fill='%23050607'/><rect x='10' y='14.6' width='12' height='1.3' rx='.6' fill='%2366d6ff'/></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="loader">
+      <div class="loader-inner">
+        <div class="loader-ring"><span></span></div>
+        <div class="loader-brand">OPTIMUS</div>
+        <div class="loader-bar"><span id="loadbar"></span></div>
+        <div id="loadtext">Initializing renderer…</div>
+      </div>
+    </div>
+
+    <canvas id="c" aria-label="3D view of the Optimus robot"></canvas>
+
+    <header class="topbar glass">
+      <div class="brand">
+        <div class="brand-mark"></div>
+        <div>
+          <div class="brand-title">OPTIMUS</div>
+          <div class="brand-sub">Interactive humanoid · Gen&nbsp;2 style</div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button class="icon-btn" id="btnTheme" title="Toggle light / dark (T)" aria-label="Toggle theme">
+          <svg viewBox="0 0 24 24"><path class="sun" d="M12 4V2m0 20v-2m8-8h2M2 12h2m13.66-5.66 1.41-1.41M4.93 19.07l1.41-1.41m0-11.32L4.93 4.93m14.14 14.14-1.41-1.41M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/><path class="moon" d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        </button>
+        <button class="icon-btn" id="btnShot" title="Save screenshot (P)" aria-label="Save screenshot">
+          <svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+        </button>
+        <button class="icon-btn" id="btnFull" title="Fullscreen (F)" aria-label="Fullscreen">
+          <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+        </button>
+        <a class="icon-btn" href="https://github.com/russellambriz/optimus-3d-interactive" target="_blank" rel="noopener" title="Source on GitHub" aria-label="GitHub">
+          <svg viewBox="0 0 24 24"><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
+        </a>
+      </div>
+    </header>
+
+    <aside id="panel" class="glass">
+      <button id="panelHandle" aria-label="Toggle controls"><span></span></button>
+      <nav class="tabs" role="tablist">
+        <button class="tab active" data-tab="motion">Motion</button>
+        <button class="tab" data-tab="joints">Joints</button>
+        <button class="tab" data-tab="view">View</button>
+        <span class="tab-ink"></span>
+      </nav>
+
+      <section class="tab-page active" data-page="motion">
+        <div class="section-label">Animation presets</div>
+        <div id="presets" class="preset-grid"></div>
+        <div class="row slider-row">
+          <label for="speed">Speed</label>
+          <input id="speed" type="range" min="0.25" max="2" step="0.05" value="1" />
+          <output id="speedOut">1.00×</output>
+        </div>
+        <div class="section-label">Parts</div>
+        <div id="partChips" class="chips"></div>
+        <p class="note">Tip: click any part of the robot to focus the camera and learn about it.</p>
+      </section>
+
+      <section class="tab-page" data-page="joints">
+        <div class="joints-head">
+          <span class="section-label">Manual joint control</span>
+          <button class="ghost-btn" id="btnResetPose">Reset pose</button>
+        </div>
+        <div id="sliders"></div>
+      </section>
+
+      <section class="tab-page" data-page="view">
+        <div class="section-label">Display</div>
+        <div id="toggles"></div>
+        <div class="section-label">Camera</div>
+        <div class="btn-row">
+          <button class="ghost-btn" id="btnResetCam">Reset view</button>
+          <button class="ghost-btn" id="btnFront">Front</button>
+          <button class="ghost-btn" id="btnSide">Side</button>
+          <button class="ghost-btn" id="btnBack">Back</button>
+        </div>
+        <div class="kbd-help">
+          <div><kbd>1</kbd>–<kbd>5</kbd> presets</div>
+          <div><kbd>R</kbd> auto-rotate</div>
+          <div><kbd>X</kbd> x-ray</div>
+          <div><kbd>E</kbd> explode</div>
+          <div><kbd>T</kbd> theme</div>
+          <div><kbd>Esc</kbd> reset</div>
+        </div>
+      </section>
+      <footer class="panel-foot">Fan-made procedural model · not affiliated with Tesla</footer>
+    </aside>
+
+    <div id="tooltip"></div>
+
+    <article id="infocard" class="glass" aria-live="polite">
+      <button class="close" id="infoClose" aria-label="Close">×</button>
+      <div class="kicker" id="infoKicker"></div>
+      <h2 id="infoTitle"></h2>
+      <p id="infoBody"></p>
+      <div class="tags" id="infoTags"></div>
+      <div class="info-nav">
+        <button class="ghost-btn" id="infoPrev">‹ Prev</button>
+        <span id="infoIndex"></span>
+        <button class="ghost-btn" id="infoNext">Next ›</button>
+      </div>
+    </article>
+
+    <div id="hint" class="glass">Drag to orbit · Scroll / pinch to zoom · Click a part</div>
+    <div id="fps"></div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

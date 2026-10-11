@@ -1,0 +1,21 @@
+{
+  "name": "optimus-3d-interactive",
+  "version": "1.0.0",
+  "description": "Interactive, procedurally modeled 3D Tesla Optimus humanoid robot built with Three.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "three": "^0.169.0"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.64.0",
+    "vite": "^5.4.21"
+  },
+  "private": true,
+  "type": "module"
+}
