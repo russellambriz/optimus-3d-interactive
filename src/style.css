@@ -1,8 +1,8 @@
 :root {
   --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --accent: #4cc9ff;
-  --accent-2: #8b7bff;
+  --accent: #d9c08f;
+  --accent-2: #8f6f3f;
   --text: #eef1f6;
   --muted: #8c95a5;
   --glass: rgba(16, 19, 27, 0.52);
@@ -20,7 +20,7 @@
   --glass-hi: rgba(20, 30, 50, 0.05);
   --track: rgba(20, 30, 50, 0.12);
   --shadow: 0 20px 60px rgba(40, 50, 80, 0.18);
-  --accent: #0a84ff;
+  --accent: #8a6a2e;
   --bg: #dfe3e9;
 }
 * { box-sizing: border-box; }
@@ -53,9 +53,9 @@ button { font: inherit; color: inherit; }
 /* ---------- top bar ---------- */
 .topbar { position: fixed; top: 16px; left: 16px; right: 16px; height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px 0 16px; z-index: 10; pointer-events: auto; max-width: calc(100% - 32px); }
 .brand { display: flex; align-items: center; gap: 12px; }
-.brand-mark { width: 30px; height: 34px; border-radius: 15px 15px 13px 13px; background: linear-gradient(180deg, #f6f7f9, #cfd3da); position: relative; box-shadow: inset 0 -2px 4px rgba(0,0,0,0.2); }
-.brand-mark::after { content: ''; position: absolute; left: 3px; right: 3px; top: 9px; bottom: 6px; border-radius: 10px 10px 12px 12px; background: linear-gradient(180deg, #0c0e12, #000); box-shadow: inset 0 2px 0 rgba(255,255,255,0.12); }
-.brand-mark::before { content: ''; position: absolute; z-index: 1; left: 7px; right: 7px; top: 16px; height: 2px; border-radius: 2px; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.brand-mark { width: 26px; height: 34px; border-radius: 50% 50% 46% 46% / 55% 55% 45% 45%; background: radial-gradient(ellipse at 35% 28%, #3a3b40 0%, #0b0b0d 45%, #000 100%); position: relative; box-shadow: 0 0 0 1.5px #c9b083, inset 0 -2px 4px rgba(255,255,255,0.08); }
+.brand-mark::after { content: ''; position: absolute; left: 6px; top: 6px; width: 5px; height: 12px; border-radius: 50%; background: rgba(255,255,255,0.35); filter: blur(1px); }
+
 .brand-title { font-weight: 800; letter-spacing: 0.32em; font-size: 15px; }
 .brand-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; letter-spacing: 0.02em; }
 .top-actions { display: flex; gap: 6px; }
@@ -80,7 +80,7 @@ button { font: inherit; color: inherit; }
 .preset { display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 13px 4px 11px; border-radius: 14px; border: 1px solid var(--glass-border); background: var(--glass-hi); cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.35s var(--ease); }
 .preset svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; }
 .preset:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
-.preset.active { background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 30%, transparent), color-mix(in srgb, var(--accent-2) 22%, transparent)); border-color: color-mix(in srgb, var(--accent) 70%, transparent); box-shadow: 0 6px 24px color-mix(in srgb, var(--accent) 25%, transparent); }
+.preset.active { background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 26%, transparent), color-mix(in srgb, var(--accent-2) 20%, transparent)); border-color: color-mix(in srgb, var(--accent) 70%, transparent); box-shadow: 0 6px 24px color-mix(in srgb, var(--accent) 25%, transparent); }
 .preset .kb { font-size: 10px; color: var(--muted); font-weight: 500; margin-top: -4px; }
 
 .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }

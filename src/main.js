@@ -23,8 +23,8 @@ async function progress(pct, text) {
 }
 
 const THEMES = {
-  dark: { center: '#1d2330', mid: '#0e1218', edge: '#05070a', floor: 0x07090c, platform: 0x101318, ring: new THREE.Color(4.5, 14, 24), key: 1.7, env: 0.5, rim: 0x7fbfff, rimI: 1.4 },
-  light: { center: '#ffffff', mid: '#e4e8ee', edge: '#b9c0ca', floor: 0xd4d9e0, platform: 0xe9ecf0, ring: new THREE.Color(2.4, 10, 26), key: 1.5, env: 0.6, rim: 0xffffff, rimI: 0.8 },
+  dark: { center: '#1d2330', mid: '#0e1218', edge: '#05070a', floor: 0x07090c, platform: 0x101318, ring: new THREE.Color(12, 10, 7.5), key: 1.8, env: 0.75, rim: 0xcfe2ff, rimI: 1.6 },
+  light: { center: '#ffffff', mid: '#e4e8ee', edge: '#b9c0ca', floor: 0xd4d9e0, platform: 0xe9ecf0, ring: new THREE.Color(14, 11, 7), key: 1.5, env: 0.6, rim: 0xffffff, rimI: 0.8 },
 };
 
 // ======================================================================
@@ -169,18 +169,19 @@ async function init() {
     key.intensity = th.key;
     rim.color.set(th.rim); rim.intensity = th.rimI;
     scene.environmentIntensity = th.env;
-    bloom.strength = name === 'dark' ? 0.55 : 0.35;
+    bloom.strength = name === 'dark' ? 0.42 : 0.3;
   }
   setTheme(params.get('theme') === 'light' ? 'light' : 'dark');
 
   // ---------- material modes (x-ray / wireframe) ----------
   const robotMats = Object.values(M);
-  const XRAY = new Set([M.white, M.pearl, M.visor, M.graphite, M.rubber, M.silver]);
+  const XRAY = new Set([M.gold, M.black, M.satin, M.rubber, M.silver, M.head, M.torso, M.thigh, M.upperArm, M.boot]);
+  const XRAY_SHELL = new Set([M.gold, M.head, M.torso, M.thigh, M.upperArm]);
   function applyMaterialModes() {
     for (const m of robotMats) {
       const x = state.xray && XRAY.has(m);
       m.transparent = x;
-      m.opacity = x ? (m === M.graphite || m === M.silver || m === M.rubber ? 0.28 : 0.12) : 1;
+      m.opacity = x ? (XRAY_SHELL.has(m) ? 0.12 : 0.26) : 1;
       m.depthWrite = !x;
       m.wireframe = state.wire && m !== M.cell;
       m.needsUpdate = true;
@@ -194,11 +195,12 @@ async function init() {
 
   // ---------- highlight ----------
   const hiCache = new Map();
-  const accent = new THREE.Color(0x3ab8ff);
+  const accent = new THREE.Color(0x58c4ff);
   function hiMat(base, strong) {
     const k = base.uuid + (strong ? 's' : 'h');
     if (!hiCache.has(k)) {
       const m = base.clone();
+      if (base.onBeforeCompile) { m.onBeforeCompile = base.onBeforeCompile; m.customProgramCacheKey = base.customProgramCacheKey; }
       if (m.emissive) { m.emissive.copy(accent); m.emissiveIntensity = strong ? 0.55 : 0.3; }
       else if (m.color) m.color.lerp(accent, strong ? 0.4 : 0.25);
       hiCache.set(k, m);

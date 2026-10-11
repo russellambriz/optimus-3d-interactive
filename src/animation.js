@@ -4,8 +4,8 @@ const D = Math.PI / 180;
 export const REST = {
   headYaw: 0, headPitch: 0, headRoll: 0,
   waistYaw: 0, waistPitch: 0, waistRoll: 0,
-  lShPitch: 0.02, lShRoll: 0.09, lShYaw: 0, lElbow: 0.2, lWrist: 0, lWristTwist: 0, lGrip: 0.22,
-  rShPitch: 0.02, rShRoll: 0.09, rShYaw: 0, rElbow: 0.2, rWrist: 0, rWristTwist: 0, rGrip: 0.22,
+  lShPitch: 0.02, lShRoll: 0.05, lShYaw: 0, lElbow: 0.2, lWrist: 0, lWristTwist: 0, lGrip: 0.22,
+  rShPitch: 0.02, rShRoll: 0.05, rShYaw: 0, rElbow: 0.2, rWrist: 0, rWristTwist: 0, rGrip: 0.22,
   lHip: 0, lHipRoll: 0.015, lKnee: 0.03, lAnkle: 0, lToe: 0,
   rHip: 0, rHipRoll: 0.015, rKnee: 0.03, rAnkle: 0, rToe: 0,
   rootX: 0, rootY: 0, rootZ: 0, rootYaw: 0, rootRoll: 0,
@@ -57,7 +57,7 @@ export const PRESETS = {
       p.waistPitch = 0.01 + b * 0.012;
       p.headYaw = S(t * 0.37) * 0.22 + S(t * 0.11) * 0.1;
       p.headPitch = 0.04 + S(t * 0.5) * 0.04;
-      p.lShRoll = 0.1 + b * 0.012; p.rShRoll = 0.1 + b * 0.012;
+      p.lShRoll = 0.06 + b * 0.01; p.rShRoll = 0.06 + b * 0.01;
       p.lShPitch = 0.03 + S(t * 0.7) * 0.02; p.rShPitch = 0.03 + S(t * 0.7 + 1) * 0.02;
       p.lElbow = 0.22 + b * 0.02; p.rElbow = 0.22 - b * 0.02;
       p.lGrip = 0.25 + S(t * 0.9) * 0.05; p.rGrip = 0.25 + S(t * 0.8 + 2) * 0.05;

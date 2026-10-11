@@ -2,10 +2,10 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 /* ------------------------------------------------------------------ *
- *  Procedural Optimus-style humanoid.
+ *  Procedural Optimus Gen 3–style humanoid (fan recreation from
+ *  Tesla's public "gen3" app renders – not Tesla CAD).
  *  Units are metres. The robot faces +Z; its left side is +X.
- *  Every body segment is a Group used as a joint pivot so the model
- *  can be posed / animated with simple Euler rotations.
+ *  Every body segment is a Group used as a joint pivot.
  * ------------------------------------------------------------------ */
 
 export const DIM = {
@@ -16,59 +16,111 @@ export const DIM = {
   forearm: 0.255,
 };
 
+const GOLD = { color: 0xcdb68b, roughness: 0.26, metalness: 1.0, clearcoat: 0.4 };
+const MATTE = { color: 0x111113, roughness: 0.62, metalness: 0.1, clearcoat: 0.0 };
+const SATIN = { color: 0x0b0b0d, roughness: 0.34, metalness: 0.25, clearcoat: 0.3 };
+const GLOSS = { color: 0x040405, roughness: 0.04, metalness: 0.4, clearcoat: 1.0 };
+
+/**
+ * Two-tone PBR material. `dist` is a GLSL function body returning a signed
+ * distance-ish value from the object-space position `p`; >0 → finish A,
+ * <0 → finish B. A thin seam is drawn along the boundary.
+ */
+function twoTone(name, A, B, dist, { seam = 0.0016, seamFinish = { color: 0x050506, roughness: 0.7, metalness: 0.0 }, seamAmt = 0.85 } = {}) {
+  const mat = new THREE.MeshPhysicalMaterial({ name, color: 0xffffff, roughness: A.roughness, metalness: A.metalness, clearcoat: 1, clearcoatRoughness: 0.18 });
+  const U = {
+    uColA: { value: new THREE.Color(A.color) }, uColB: { value: new THREE.Color(B.color) },
+    uRA: { value: A.roughness }, uRB: { value: B.roughness },
+    uMA: { value: A.metalness }, uMB: { value: B.metalness },
+    uCA: { value: A.clearcoat ?? 0 }, uCB: { value: B.clearcoat ?? 0 },
+    uSeam: { value: seam }, uSeamAmt: { value: seamAmt },
+    uSeamCol: { value: new THREE.Color(seamFinish.color) }, uSeamR: { value: seamFinish.roughness }, uSeamM: { value: seamFinish.metalness },
+  };
+  mat.userData.tt = U;
+  mat.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, U);
+    sh.vertexShader = 'varying vec3 vObjPos;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vObjPos = position;');
+    sh.fragmentShader = `varying vec3 vObjPos;
+uniform vec3 uColA; uniform vec3 uColB; uniform float uRA; uniform float uRB; uniform float uMA; uniform float uMB;
+uniform float uCA; uniform float uCB; uniform float uSeam; uniform float uSeamAmt; uniform vec3 uSeamCol; uniform float uSeamR; uniform float uSeamM;
+float ttDist(vec3 p) { ${dist} }
+` + sh.fragmentShader
+      .replace('#include <color_fragment>', `#include <color_fragment>
+  float ttD = ttDist(vObjPos);
+  float ttW = fwidth(ttD) * 0.9 + 1e-6;
+  float ttM = smoothstep(-ttW, ttW, ttD);
+  float ttS = (1.0 - smoothstep(uSeam - ttW, uSeam + ttW, abs(ttD))) * uSeamAmt;
+  diffuseColor.rgb *= mix(mix(uColB, uColA, ttM), uSeamCol, ttS);`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+  roughnessFactor = mix(mix(uRB, uRA, ttM), uSeamR, ttS);`)
+      .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
+  metalnessFactor = mix(mix(uMB, uMA, ttM), uSeamM, ttS);`)
+      .replace('#include <lights_physical_fragment>', `#include <lights_physical_fragment>
+  #ifdef USE_CLEARCOAT
+  material.clearcoat = mix(uCB, uCA, ttM) * (1.0 - ttS);
+  #endif`);
+  };
+  mat.customProgramCacheKey = () => 'tt-' + name;
+  return mat;
+}
+
+function solid(name, F, extra = {}) {
+  return new THREE.MeshPhysicalMaterial({ name, color: F.color, roughness: F.roughness, metalness: F.metalness, clearcoat: F.clearcoat, clearcoatRoughness: 0.2, ...extra });
+}
+
 // ---------- materials -------------------------------------------------
 export function createMaterials() {
-  const white = new THREE.MeshPhysicalMaterial({
-    name: 'white',
-    color: 0xf4f5f7,
-    roughness: 0.34,
-    metalness: 0.0,
-    clearcoat: 1.0,
-    clearcoatRoughness: 0.07,
-  });
-  const pearl = white.clone();
-  pearl.name = 'pearl';
-  pearl.color.set(0xdfe2e7);
+  const gold = solid('gold', GOLD);
+  const black = solid('black', MATTE);
+  const satin = solid('satin', SATIN);
+  const rubber = new THREE.MeshStandardMaterial({ name: 'rubber', color: 0x070708, roughness: 0.9, metalness: 0 });
+  const silver = new THREE.MeshPhysicalMaterial({ name: 'silver', color: 0x8d8f94, roughness: 0.4, metalness: 1.0 });
 
-  const graphite = new THREE.MeshPhysicalMaterial({
-    name: 'graphite',
-    color: 0x1b1d22,
-    roughness: 0.38,
-    metalness: 0.6,
-    clearcoat: 0.5,
-    clearcoatRoughness: 0.25,
-  });
-  const rubber = new THREE.MeshStandardMaterial({
-    name: 'rubber',
-    color: 0x0c0d0f,
-    roughness: 0.8,
-    metalness: 0.1,
-  });
-  const silver = new THREE.MeshPhysicalMaterial({
-    name: 'silver',
-    color: 0xc9cdd3,
-    roughness: 0.4,
-    metalness: 1.0,
-  });
-  const visor = new THREE.MeshPhysicalMaterial({
-    name: 'visor',
-    color: 0x020304,
-    roughness: 0.05,
-    metalness: 0.35,
-    clearcoat: 1.0,
-    clearcoatRoughness: 0.02,
-  });
+  // Head: mirror-gloss face, satin black shell, gold pinstripe at the boundary
+  const head = twoTone('head', GLOSS, SATIN, `
+    float phi = atan(p.x, p.z);
+    float a = abs(phi) / 1.32;
+    float side = (1.32 - abs(phi)) * 0.085;
+    float top = (0.112 - 0.085 * a * a) - p.y;
+    return min(side, top);`, { seam: 0.0013, seamFinish: { color: 0xc9b083, roughness: 0.25, metalness: 1.0 }, seamAmt: 1.0 });
+
+  // Torso: gold chest plate + flanks, black yoke/neckline and abdomen
+  const torso = twoTone('torso', GOLD, MATTE, `
+    float ph = abs(atan(p.x, p.z / 0.6));
+    float k = ph / 1.36;
+    float ybFront = 0.07 - 0.06 * k * k * k;
+    float flank = smoothstep(1.34, 1.46, ph);
+    float yb = mix(ybFront, -0.3, flank);
+    float back = smoothstep(1.4, 1.8, ph);
+    float topEdge = mix(0.27, 0.252, back);
+    return min(topEdge - p.y, p.y - yb);`);
+
+  // Pelvis: matte black with gold continuing down the outer hips
+  const pelvis = twoTone('pelvis', GOLD, MATTE, `
+    float ph = abs(atan(p.x, p.z / 0.62));
+    float lo = 1.3 + 0.45 * clamp((0.0 - p.y) / 0.08, 0.0, 1.0);
+    return min(min(ph - lo, 2.3 - ph) * 0.12, p.y + 0.06);`);
+
+  // Thigh: gold, black "brief" region on the inner/upper thigh, black kneepad
+  const thigh = twoTone('thigh', GOLD, MATTE, `
+    float th = abs(atan(p.z, p.x));
+    float yb = 0.09 - 0.096 * th;
+    float knee = -0.356 + 0.018 * cos(atan(p.z, p.x));
+    return min(yb - p.y, p.y - knee);`);
+
+  // Upper arm: gold with a single panel seam
+  const upperArm = twoTone('upperArm', GOLD, GOLD, `return abs(p.y + 0.105) - 0.0;`, { seam: 0.0012 });
+  // Lower leg "boot": cuff line + slanted ankle seam
+  const boot = twoTone('boot', MATTE, { color: 0x18181a, roughness: 0.5, metalness: 0.15, clearcoat: 0.1 }, `
+    float cuff = -0.045 - p.y;
+    float ankle = p.y - (-0.3 - 0.75 * p.z);
+    return min(cuff, ankle);`, { seam: 0.0022, seamFinish: { color: 0x45464b, roughness: 0.3, metalness: 0.6 }, seamAmt: 1.0 });
+
   const glow = new THREE.MeshBasicMaterial({ name: 'glow', color: new THREE.Color(6, 15, 24) });
-  const cell = new THREE.MeshStandardMaterial({
-    name: 'cell',
-    color: 0x0b2a24,
-    emissive: new THREE.Color(0x19ffc0),
-    emissiveIntensity: 16,
-    roughness: 0.4,
-  });
+  const cell = new THREE.MeshStandardMaterial({ name: 'cell', color: 0x0b2a24, emissive: new THREE.Color(0x19ffc0), emissiveIntensity: 12, roughness: 0.4 });
   const actuator = new THREE.MeshBasicMaterial({ name: 'actuator', color: new THREE.Color(24, 10, 2) });
   const egg = new THREE.MeshPhysicalMaterial({ name: 'egg', color: 0xf3e6d3, roughness: 0.55, sheen: 0.4 });
-  return { white, pearl, graphite, rubber, silver, visor, glow, cell, actuator, egg };
+  return { gold, black, satin, rubber, silver, head, torso, pelvis, thigh, upperArm, boot, glow, cell, actuator, egg };
 }
 
 // ---------- geometry helpers -----------------------------------------
@@ -78,42 +130,28 @@ function cached(key, fn) {
   return geoCache.get(key);
 }
 
-/**
- * Smooth tapered "body shell": a lathe with elliptical end caps,
- * hanging down from y=0 to y=-len, then scaled for an oval section.
- */
-function shellGeo(len, r0, r1, { sx = 1, sz = 1, bulge = 0, capT = 0.5, capB = 0.5, seg = 48 } = {}) {
-  const key = `shell:${[len, r0, r1, sx, sz, bulge, capT, capB, seg].join(',')}`;
-  return cached(key, () => {
-    const pts = [];
-    const n = 12;
-    const ct = r0 * capT;
-    const cb = r1 * capB;
-    for (let i = 0; i <= n; i++) {
-      const a = (i / n) * Math.PI * 0.5;
-      pts.push(new THREE.Vector2(Math.max(1e-4, Math.sin(a) * r0), ct * Math.cos(a)));
-    }
-    const m = 20;
-    for (let i = 1; i < m; i++) {
-      const t = i / m;
-      const r = r0 + (r1 - r0) * t + bulge * Math.sin(Math.PI * t);
-      pts.push(new THREE.Vector2(r, -t * len));
-    }
-    for (let i = 0; i <= n; i++) {
-      const a = (i / n) * Math.PI * 0.5;
-      pts.push(new THREE.Vector2(Math.max(1e-4, Math.cos(a) * r1), -len - cb * Math.sin(a)));
-    }
-    pts.reverse(); // bottom -> top for outward normals
-    const g = new THREE.LatheGeometry(pts, seg);
+/** Smooth lathe from a list of [radius, y] control points (top → bottom). */
+function profileGeo(key, pts, { sx = 1, sz = 1, seg = 64, samples = 90, zFn = null } = {}) {
+  return cached('prof:' + key, () => {
+    const curve = new THREE.SplineCurve(pts.map(([r, y]) => new THREE.Vector2(r, y)));
+    const p2 = curve.getSpacedPoints(samples).map((v) => new THREE.Vector2(Math.max(1e-4, v.x), v.y));
+    p2[0].x = 1e-4; p2[p2.length - 1].x = 1e-4;
+    p2.reverse(); // bottom -> top
+    const g = new THREE.LatheGeometry(p2, seg);
     g.scale(sx, 1, sz);
+    if (zFn) {
+      const pos = g.attributes.position;
+      for (let i = 0; i < pos.count; i++) pos.setZ(i, pos.getZ(i) * zFn(pos.getY(i), pos.getZ(i), pos.getX(i)));
+      g.computeVertexNormals();
+    }
     return g;
   });
 }
-const rbox = (w, h, d, r = 0.01, s = 3) => cached(`rb:${w},${h},${d},${r},${s}`, () => new RoundedBoxGeometry(w, h, d, s, r));
+const rbox = (w, h, d, r = 0.01, s = 4) => cached(`rb:${w},${h},${d},${r},${s}`, () => new RoundedBoxGeometry(w, h, d, s, r));
 const sphere = (r, ws = 32, hs = 20) => cached(`sp:${r},${ws},${hs}`, () => new THREE.SphereGeometry(r, ws, hs));
-const cyl = (rt, rb, h, s = 32) => cached(`cy:${rt},${rb},${h},${s}`, () => new THREE.CylinderGeometry(rt, rb, h, s));
-const capsule = (r, l) => cached(`ca:${r},${l}`, () => new THREE.CapsuleGeometry(r, l, 6, 14));
-const torus = (R, r, arc = Math.PI * 2) => cached(`to:${R},${r},${arc}`, () => new THREE.TorusGeometry(R, r, 10, 64, arc));
+const cyl = (rt, rb, h, s = 40) => cached(`cy:${rt},${rb},${h},${s}`, () => new THREE.CylinderGeometry(rt, rb, h, s));
+const capsule = (r, l) => cached(`ca:${r},${l}`, () => new THREE.CapsuleGeometry(r, l, 6, 16));
+const torus = (R, r) => cached(`to:${R},${r}`, () => new THREE.TorusGeometry(R, r, 10, 64));
 
 function mesh(geo, mat, { pos, rot, scale, name } = {}) {
   const m = new THREE.Mesh(geo, mat);
@@ -134,66 +172,44 @@ function group(name, pos = [0, 0, 0]) {
 
 // ---------- body parts -----------------------------------------------
 function buildHead(M) {
-  const neck = group('neck', [0, 0, 0]);
+  const neck = group('neck');
   neck.rotation.order = 'YXZ';
-  neck.add(mesh(cyl(0.034, 0.042, 0.1), M.graphite, { pos: [0, 0.03, 0] }));
-  neck.add(mesh(torus(0.04, 0.006), M.silver, { pos: [0, 0.055, 0], rot: [Math.PI / 2, 0, 0] }));
+  // tall matte neck flaring into the trapezius
+  neck.add(mesh(profileGeo('neck', [[0, 0.13], [0.052, 0.125], [0.054, 0.075], [0.06, 0.03], [0.085, 0.0], [0.11, -0.02], [0, -0.03]], { sx: 1.05, sz: 0.8 }), M.black, { pos: [0, 0, -0.008] }));
 
-  const head = group('head', [0, 0.13, 0.012]);
+  const head = group('head', [0, 0.158, 0.008]);
   neck.add(head);
-  // helmet shell (white/pearl back & crown)
-  const helmet = mesh(sphere(1, 56, 36), M.white, { scale: [0.094, 0.124, 0.11] });
-  head.add(helmet);
-  // glossy black face visor, wraps the front & sides
-  const visorGeo = cached('visor', () =>
-    new THREE.SphereGeometry(1, 64, 40, Math.PI / 2 - 1.2, 2.4, 0.6, 1.85)
-  );
-  head.add(mesh(visorGeo, M.visor, { scale: [0.0968, 0.1268, 0.1128], pos: [0, -0.002, 0.002] }));
-  // subtle light bar across the face
-  const barGeo = cached('lightbar', () => {
-    const g = new THREE.TorusGeometry(1, 0.022, 8, 64, 1.1);
-    g.rotateZ(Math.PI / 2 - 0.55);
-    g.rotateX(Math.PI / 2);
-    g.scale(0.0978, 0.07, 0.1142);
-    return g;
+  const headGeo = profileGeo('head', [[0, 0.12], [0.046, 0.113], [0.075, 0.09], [0.088, 0.048], [0.088, 0.005], [0.081, -0.04], [0.068, -0.075], [0.048, -0.1], [0.025, -0.113], [0, -0.117]], {
+    sx: 1.0, sz: 1.06, seg: 96, samples: 120,
+    // flatten the face slightly and push the back of the skull out
+    zFn: (y, z) => (z > 0 ? 1.0 - 0.06 * Math.max(0, 1 - Math.abs(y + 0.01) / 0.1) : 1.06),
   });
-  const bar = mesh(barGeo, M.glow, { pos: [0, 0.008, 0.003] });
-  bar.castShadow = false;
-  head.add(bar);
-  head.add(mesh(sphere(1, 40, 24), M.graphite, { scale: [0.06, 0.04, 0.07], pos: [0, -0.095, 0.005] }));
-  // ear / side actuator pods
-  for (const s of [1, -1]) {
-    head.add(mesh(cyl(0.028, 0.028, 0.014, 32), M.graphite, { pos: [s * 0.09, -0.005, -0.012], rot: [0, 0, Math.PI / 2] }));
-    head.add(mesh(cyl(0.018, 0.018, 0.016, 32), M.silver, { pos: [s * 0.094, -0.005, -0.012], rot: [0, 0, Math.PI / 2] }));
-  }
+  const skull = mesh(headGeo, M.head, { rot: [-0.08, 0, 0] });
+  head.add(skull);
   return { neck, head };
 }
 
 function buildArm(M, s) {
   const side = s > 0 ? 'L' : 'R';
-  const shoulder = group(`shoulder${side}`, [s * 0.218, 0.245, -0.005]);
+  const shoulder = group(`shoulder${side}`, [s * 0.2, 0.222, -0.004]);
   shoulder.rotation.order = 'XZY';
-  shoulder.add(mesh(sphere(0.056), M.graphite));
-  // shoulder cap dome
-  const capGeo = cached('shoulderCap', () => new THREE.SphereGeometry(0.072, 40, 20, 0, Math.PI * 2, 0, Math.PI * 0.55));
-  shoulder.add(mesh(capGeo, M.white, { pos: [s * 0.006, 0.004, 0], rot: [0, 0, -s * 0.55], scale: [1, 0.95, 1.1] }));
-  shoulder.add(mesh(torus(0.066, 0.0045), M.silver, { pos: [s * 0.006, 0.004, 0], rot: [Math.PI / 2, -s * 0.55, 0], scale: [1, 1.1, 1] }));
-  // upper arm
-  shoulder.add(mesh(shellGeo(0.22, 0.05, 0.041, { sz: 1.06, bulge: 0.006 }), M.white, { pos: [0, -0.045, 0] }));
-  shoulder.add(mesh(cyl(0.036, 0.036, 0.05), M.graphite, { pos: [0, -0.26, 0] }));
+  shoulder.add(mesh(sphere(0.036), M.black));
+  // gold shoulder cap continuous with the upper arm
+  shoulder.add(mesh(profileGeo('upperArm', [[0, 0.048], [0.034, 0.041], [0.046, 0.012], [0.047, -0.03], [0.044, -0.11], [0.04, -0.2], [0.037, -0.245], [0, -0.258]], { sz: 1.04 }), M.upperArm, { pos: [s * 0.004, 0, 0] }));
 
   const elbow = group(`elbow${side}`, [0, -DIM.upperArm, 0]);
   shoulder.add(elbow);
-  elbow.add(mesh(cyl(0.037, 0.037, 0.078), M.graphite, { rot: [0, 0, Math.PI / 2] }));
-  for (const k of [1, -1]) elbow.add(mesh(cyl(0.026, 0.026, 0.006), M.silver, { pos: [k * 0.041, 0, 0], rot: [0, 0, Math.PI / 2] }));
-  // forearm
-  elbow.add(mesh(shellGeo(0.2, 0.047, 0.033, { sz: 1.1, bulge: 0.009, capT: 0.4 }), M.white, { pos: [0, -0.03, 0.002] }));
-  elbow.add(mesh(shellGeo(0.17, 0.03, 0.026, { sz: 1.0 }), M.graphite, { pos: [-s * 0.018, -0.05, -0.012] }));
+  elbow.add(mesh(cyl(0.036, 0.036, 0.07), M.black, { rot: [0, 0, Math.PI / 2] }));
+  // matte elbow band with a small ridge
+  elbow.add(mesh(cyl(0.043, 0.044, 0.05, 48), M.satin, { pos: [0, -0.012, 0], scale: [1, 1, 1.06] }));
+  elbow.add(mesh(rbox(0.022, 0.04, 0.028, 0.009), M.satin, { pos: [s * 0.04, -0.006, -0.004] }));
+  // bulky gold forearm (houses the hand actuators)
+  elbow.add(mesh(profileGeo('forearm', [[0, -0.02], [0.04, -0.03], [0.045, -0.06], [0.044, -0.11], [0.038, -0.18], [0.031, -0.23], [0.028, -0.245], [0, -0.25]], { sz: 1.1 }), M.gold));
 
   const wrist = group(`wrist${side}`, [0, -DIM.forearm, 0]);
   elbow.add(wrist);
-  wrist.add(mesh(sphere(0.027), M.graphite));
-  wrist.add(mesh(cyl(0.03, 0.033, 0.02), M.silver, { pos: [0, 0.018, 0] }));
+  wrist.add(mesh(cyl(0.028, 0.031, 0.03), M.black, { pos: [0, 0.008, 0] }));
+  wrist.add(mesh(sphere(0.026), M.black));
 
   const hand = buildHand(M, s);
   wrist.add(hand.root);
@@ -202,24 +218,22 @@ function buildArm(M, s) {
 
 function buildHand(M, s) {
   const root = group('hand', [0, -0.012, 0]);
-  // palm (palm faces the body: -s * X)
-  root.add(mesh(rbox(0.032, 0.088, 0.078, 0.012), M.graphite, { pos: [0, -0.05, 0.002] }));
-  // back-of-hand cover
-  root.add(mesh(rbox(0.012, 0.062, 0.066, 0.006), M.white, { pos: [s * 0.017, -0.045, 0.002] }));
+  // palm (palm faces the body: -s * X), slightly tapered
+  root.add(mesh(rbox(0.03, 0.094, 0.08, 0.013), M.black, { pos: [0, -0.052, 0.002] }));
+  root.add(mesh(rbox(0.026, 0.03, 0.07, 0.012), M.black, { pos: [0, -0.008, 0.0] }));
   const fingers = [];
-  const zs = [0.027, 0.009, -0.009, -0.027];
-  const scales = [1.0, 1.08, 1.0, 0.84];
-  const L = [0.036, 0.026, 0.02];
+  const zs = [0.0285, 0.0095, -0.0095, -0.027];
+  const lens = [[0.042, 0.026, 0.021], [0.046, 0.029, 0.022], [0.043, 0.027, 0.021], [0.034, 0.021, 0.018]];
   zs.forEach((z, i) => {
     let parent = root;
     const segs = [];
-    let y = -0.094;
+    let y = -0.1;
     for (let k = 0; k < 3; k++) {
-      const len = L[k] * scales[i];
-      const r = 0.0088 - k * 0.0009;
+      const len = lens[i][k];
+      const r = (i === 3 ? 0.0083 : 0.0093) - k * 0.0008;
       const seg = group(`finger${i}_${k}`, [0, y, z]);
-      seg.add(mesh(sphere(0.0094, 16, 12), M.silver));
-      seg.add(mesh(capsule(r, Math.max(0.001, len - 2 * r)), k === 2 ? M.rubber : M.graphite, { pos: [0, -len / 2, 0] }));
+      seg.add(mesh(sphere(r + 0.0004, 16, 12), M.black));
+      seg.add(mesh(capsule(r, Math.max(0.001, len - 2 * r)), k === 2 ? M.rubber : M.black, { pos: [0, -len / 2, 0] }));
       parent.add(seg);
       segs.push(seg);
       parent = seg;
@@ -228,17 +242,17 @@ function buildHand(M, s) {
     }
     fingers.push(segs);
   });
-  // thumb
-  const thumbBase = group('thumb', [-s * 0.008, -0.03, 0.04]);
+  // opposable thumb near the base of the palm
+  const thumbBase = group('thumb', [-s * 0.006, -0.032, 0.036]);
   root.add(thumbBase);
   const thumb = [];
   let parent = thumbBase;
   let y = 0;
-  [0.03, 0.024, 0.02].forEach((len, k) => {
-    const r = 0.0098 - k * 0.001;
+  [0.036, 0.028, 0.022].forEach((len, k) => {
+    const r = 0.0108 - k * 0.0009;
     const seg = group(`thumb_${k}`, [0, y, 0]);
-    seg.add(mesh(sphere(0.0102, 16, 12), M.silver));
-    seg.add(mesh(capsule(r, Math.max(0.001, len - 2 * r)), k === 2 ? M.rubber : M.graphite, { pos: [0, -len / 2, 0] }));
+    seg.add(mesh(sphere(r + 0.0004, 16, 12), M.black));
+    seg.add(mesh(capsule(r, Math.max(0.001, len - 2 * r)), k === 2 ? M.rubber : M.black, { pos: [0, -len / 2, 0] }));
     parent.add(seg);
     thumb.push(seg);
     parent = seg;
@@ -249,49 +263,58 @@ function buildHand(M, s) {
 
 function buildLeg(M, s) {
   const side = s > 0 ? 'L' : 'R';
-  const hip = group(`hip${side}`, [s * 0.1, -0.065, 0]);
+  const hip = group(`hip${side}`, [s * 0.09, -0.065, 0]);
   hip.rotation.order = 'XZY';
-  hip.add(mesh(sphere(0.064), M.graphite));
-  hip.add(mesh(cyl(0.05, 0.05, 0.02), M.silver, { pos: [s * 0.05, 0, 0], rot: [0, 0, Math.PI / 2] }));
-  // thigh: big white shell + rear actuator
-  hip.add(mesh(shellGeo(0.35, 0.08, 0.05, { sx: 0.92, sz: 1.08, bulge: 0.012, capT: 0.4 }), M.white, { pos: [0, -0.04, 0.006] }));
-  hip.add(mesh(cyl(0.013, 0.013, 0.24), M.silver, { pos: [s * 0.012, -0.21, -0.07] }));
-  hip.add(mesh(cyl(0.022, 0.022, 0.1), M.graphite, { pos: [s * 0.012, -0.1, -0.068] }));
+  hip.add(mesh(sphere(0.06), M.black));
+  // gold thigh; mirrored for the right leg so the mask's +X is always "outer"
+  hip.add(mesh(profileGeo('thigh', [[0, 0.07], [0.055, 0.064], [0.074, 0.03], [0.078, -0.03], [0.074, -0.14], [0.066, -0.26], [0.057, -0.35], [0.053, -0.4], [0, -0.415]], { sx: 0.96, sz: 1.06, seg: 72 }), M.thigh, { scale: [s, 1, 1] }));
 
   const knee = group(`knee${side}`, [0, -DIM.thigh, 0]);
   hip.add(knee);
-  knee.add(mesh(cyl(0.05, 0.05, 0.1), M.graphite, { rot: [0, 0, Math.PI / 2] }));
-  for (const k of [1, -1]) knee.add(mesh(cyl(0.036, 0.036, 0.006), M.silver, { pos: [k * 0.052, 0, 0], rot: [0, 0, Math.PI / 2] }));
-  const capGeo = cached('kneecap', () => new THREE.SphereGeometry(0.058, 32, 16, Math.PI / 2 - 1.0, 2.0, 0.5, 1.9));
-  knee.add(mesh(capGeo, M.pearl, { pos: [0, 0.005, 0.004], scale: [0.95, 1.1, 1] }));
-  // shin: white front shell, dark calf, linear actuator rods
-  knee.add(mesh(shellGeo(0.3, 0.054, 0.034, { sx: 0.9, sz: 0.8, bulge: 0.006, capT: 0.4 }), M.white, { pos: [0, -0.05, 0.02] }));
-  knee.add(mesh(shellGeo(0.28, 0.052, 0.03, { sx: 0.86, sz: 0.9, bulge: 0.008 }), M.graphite, { pos: [0, -0.06, -0.02] }));
-  for (const k of [1, -1]) {
-    knee.add(mesh(cyl(0.0085, 0.0085, 0.25), M.silver, { pos: [k * 0.022, -0.2, -0.062] }));
-    knee.add(mesh(cyl(0.015, 0.015, 0.08), M.graphite, { pos: [k * 0.022, -0.1, -0.062] }));
-  }
+  knee.add(mesh(sphere(0.052), M.black, { scale: [1, 1, 1.05] }));
+  // black kneepad
+  const padGeo = cached('kneepad', () => new THREE.SphereGeometry(0.064, 48, 24, Math.PI / 2 - 1.35, 2.7, 0.3, 1.75));
+  knee.add(mesh(padGeo, M.black, { pos: [0, 0.012, 0.0], scale: [0.95, 1.3, 1.02] }));
+  // lower leg "boot"
+  knee.add(mesh(profileGeo('boot', [[0, 0.02], [0.058, 0.012], [0.066, -0.03], [0.066, -0.09], [0.061, -0.17], [0.053, -0.26], [0.047, -0.33], [0.048, -0.39], [0.051, -0.42], [0, -0.43]], {
+    sx: 0.92, sz: 1.04, seg: 64,
+    zFn: (y, z) => (z < 0 ? 1 + 0.18 * Math.max(0, 1 - Math.abs(y + 0.12) / 0.12) : 1),
+  }), M.boot, { pos: [0, -0.012, 0] }));
 
   const ankle = group(`ankle${side}`, [0, -DIM.shin, 0]);
   knee.add(ankle);
-  ankle.add(mesh(sphere(0.034), M.graphite));
-  ankle.add(mesh(cyl(0.028, 0.028, 0.075), M.silver, { rot: [0, 0, Math.PI / 2] }));
+  ankle.add(mesh(sphere(0.036), M.black));
   const foot = group('foot', [0, 0, 0]);
   ankle.add(foot);
-  foot.add(mesh(rbox(0.094, 0.05, 0.17, 0.018), M.graphite, { pos: [0, -0.043, 0.012] }));
-  foot.add(mesh(rbox(0.07, 0.014, 0.09, 0.006), M.silver, { pos: [0, -0.016, 0.03] }));
-  foot.add(mesh(rbox(0.098, 0.012, 0.172, 0.005), M.rubber, { pos: [0, -0.068, 0.012] }));
-  const toe = group('toe', [0, -0.05, 0.097]);
+  // one-piece boot-like shoe (lathe laid along +Z, flat sole)
+  const shoeGeo = cached('shoe', () => {
+    const curve = new THREE.SplineCurve([[0, 0.18], [0.028, 0.172], [0.042, 0.145], [0.049, 0.09], [0.048, 0.02], [0.045, -0.035], [0.036, -0.062], [0, -0.072]].map(([r, y]) => new THREE.Vector2(r, y)));
+    const pts = curve.getSpacedPoints(80).map((v) => new THREE.Vector2(Math.max(1e-4, v.x), v.y));
+    pts[0].x = 1e-4; pts[pts.length - 1].x = 1e-4;
+    pts.reverse();
+    const g = new THREE.LatheGeometry(pts, 64);
+    g.rotateX(Math.PI / 2);
+    const pos = g.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      let y = pos.getY(i) * 0.82;
+      const z = pos.getZ(i);
+      // rise toward the ankle, flat sole
+      y += 0.012 * Math.max(0, 1 - Math.abs(z - 0.0) / 0.08) * (y > 0 ? 1 : 0);
+      pos.setXYZ(i, pos.getX(i) * 0.98, Math.max(y, -0.03), z);
+    }
+    g.computeVertexNormals();
+    return g;
+  });
+  foot.add(mesh(shoeGeo, M.black, { pos: [0, -0.04, 0.0], scale: [1.1, 1.08, 1.08] }));
+  const toe = group('toe', [0, -0.062, 0.1]);
   foot.add(toe);
-  toe.add(mesh(rbox(0.09, 0.034, 0.06, 0.014), M.graphite, { pos: [0, 0.0, 0.028] }));
-  toe.add(mesh(rbox(0.094, 0.01, 0.062, 0.004), M.rubber, { pos: [0, -0.018, 0.028] }));
   return { hip, knee, ankle, foot, toe };
 }
 
 function buildInternals(M) {
-  // Visible only in X-ray mode: battery pack + compute + actuator markers
+  // Visible only in X-ray mode: battery pack + compute
   const g = group('internals');
-  const pack = group('battery', [0, 0.11, 0.0]);
+  const pack = group('battery', [0, 0.13, 0.0]);
   const cols = 9, rows = 5, layers = 2;
   const cellGeo = new THREE.CylinderGeometry(0.0085, 0.0085, 0.05, 12);
   const inst = new THREE.InstancedMesh(cellGeo, M.cell, cols * rows * layers);
@@ -322,39 +345,27 @@ export function buildRobot(M) {
   const root = group('optimus');
   const pelvis = group('pelvis', [0, DIM.pelvisY, 0]);
   root.add(pelvis);
-  pelvis.add(mesh(shellGeo(0.12, 0.122, 0.098, { sx: 1.38, sz: 0.86, capT: 0.25, capB: 0.55 }), M.white, { pos: [0, 0.055, 0] }));
-  pelvis.add(mesh(rbox(0.1, 0.08, 0.12, 0.03), M.graphite, { pos: [0, -0.06, 0] }));
-  pelvis.add(mesh(torus(0.118, 0.006), M.silver, { pos: [0, 0.058, 0], rot: [Math.PI / 2, 0, 0], scale: [1.36, 0.86, 1] }));
+  // enclosed matte pelvis ("brief" region)
+  pelvis.add(mesh(profileGeo('pelvis', [[0, 0.1], [0.088, 0.098], [0.098, 0.06], [0.112, 0.01], [0.142, -0.03], [0.13, -0.07], [0.082, -0.1], [0.04, -0.116], [0, -0.12]], { sx: 1, sz: 0.62, seg: 72 }), M.pelvis));
 
   const waist = group('waist', [0, 0.07, 0]);
   waist.rotation.order = 'YXZ';
   pelvis.add(waist);
-  // abdomen: dark mechanical core with ribs
-  waist.add(mesh(cyl(0.098, 0.105, 0.14, 48), M.graphite, { pos: [0, 0.07, -0.005], scale: [1.25, 1, 0.82] }));
-  for (let k = 0; k < 3; k++) {
-    waist.add(mesh(torus(0.102, 0.007), M.rubber, { pos: [0, 0.03 + k * 0.04, -0.005], rot: [Math.PI / 2, 0, 0], scale: [1.25, 0.82, 1] }));
-  }
 
   const chest = group('chest', [0, 0.13, 0]);
   waist.add(chest);
-  // V-shaped chest shell
-  chest.add(mesh(shellGeo(0.27, 0.168, 0.102, { sx: 1.3, sz: 0.72, bulge: 0.02, capT: 0.2, capB: 0.3 }), M.white, { pos: [0, 0.285, 0] }));
-  // pectoral plates
-  for (const s of [1, -1]) {
-    chest.add(mesh(shellGeo(0.12, 0.08, 0.062, { sx: 1.15, sz: 0.36, capT: 0.3, capB: 0.6 }), M.white, { pos: [s * 0.08, 0.262, 0.086], rot: [0.12, s * 0.22, s * 0.08] }));
-  }
-  // back plate / spine
-  chest.add(mesh(rbox(0.2, 0.2, 0.05, 0.02), M.pearl, { pos: [0, 0.17, -0.1] }));
-  chest.add(mesh(rbox(0.05, 0.22, 0.03, 0.012), M.graphite, { pos: [0, 0.16, -0.122] }));
-  // collar
-  chest.add(mesh(cyl(0.07, 0.11, 0.035, 48), M.graphite, { pos: [0, 0.31, -0.005], scale: [1.4, 1, 0.9] }));
+  // one smooth torso shell: gold chest + flanks, black yoke & abdomen
+  chest.add(mesh(profileGeo('torso', [[0, 0.345], [0.06, 0.342], [0.12, 0.326], [0.158, 0.3], [0.17, 0.262], [0.162, 0.19], [0.146, 0.1], [0.128, 0.02], [0.112, -0.06], [0.11, -0.12], [0.124, -0.17], [0.13, -0.2], [0, -0.212]], {
+    sx: 1, sz: 0.6, seg: 96, samples: 120,
+    zFn: (y, z, x) => (z > 0 ? (1 + 0.08 * Math.max(0, 1 - Math.abs(y - 0.18) / 0.12)) * (1 - 0.035 * Math.exp(-(x * x) / 0.0009) * Math.max(0, 1 - Math.abs(y - 0.16) / 0.1)) : 1 + 0.05 * Math.max(0, 1 - Math.abs(y - 0.2) / 0.12)),
+  }), M.torso));
 
   const internals = buildInternals(M);
   chest.add(internals.root);
   internals.root.visible = false;
 
   const { neck, head } = buildHead(M);
-  neck.position.set(0, 0.335, 0);
+  neck.position.set(0, 0.33, -0.004);
   chest.add(neck);
 
   const armL = buildArm(M, 1);
@@ -374,14 +385,19 @@ export function buildRobot(M) {
   // actuator markers at each joint (x-ray)
   const markers = [];
   const markerGeo = new THREE.TorusGeometry(0.03, 0.004, 8, 32);
-  const addMarker = (obj, scale = 1) => {
+  const addMarker = (obj, scale = 1, pos) => {
     const m = new THREE.Mesh(markerGeo, M.actuator);
     m.scale.setScalar(scale);
+    if (pos) m.position.set(...pos);
     m.visible = false;
     obj.add(m);
     markers.push(m);
   };
-  [armL, armR].forEach((a) => { addMarker(a.shoulder, 1.6); addMarker(a.elbow, 1.2); addMarker(a.wrist, 0.9); });
+  [armL, armR].forEach((a) => {
+    addMarker(a.shoulder, 1.6); addMarker(a.elbow, 1.2); addMarker(a.wrist, 0.9);
+    // forearm actuator pack (Gen 3 moves the hand actuators into the forearm)
+    addMarker(a.elbow, 1.45, [0, -0.08, 0]); addMarker(a.elbow, 1.3, [0, -0.13, 0]);
+  });
   [legL, legR].forEach((l) => { addMarker(l.hip, 2); addMarker(l.knee, 1.6); addMarker(l.ankle, 1.1); });
   addMarker(neck, 1.2);
   addMarker(waist, 3);
@@ -416,13 +432,13 @@ export function buildRobot(M) {
     a.elbow.rotation.x = -p[pre + 'Elbow'];
     a.hand.root.rotation.set(0, s * p[pre + 'WristTwist'], -s * p[pre + 'Wrist']);
     const g = p[pre + 'Grip'];
-    const curl = [1.15, 1.45, 1.05];
+    const curl = [1.2, 1.45, 1.0];
     a.hand.fingers.forEach((f, i) => f.forEach((seg, k) => {
-      seg.rotation.z = -s * g * curl[k] * (1 - i * 0.04) - (k === 0 ? s * 0.06 : 0);
-      if (k === 0) seg.rotation.x = (i - 1.5) * 0.04 * (1 - g);
+      seg.rotation.z = -s * g * curl[k] * (1 - i * 0.03) - (k === 0 ? s * 0.05 : -s * 0.08);
+      if (k === 0) seg.rotation.x = (i - 1.5) * 0.045 * (1 - g);
     }));
-    a.hand.thumbBase.rotation.set(-0.55 - g * 0.25, 0, -s * (0.35 + g * 0.55));
-    a.hand.thumb.forEach((seg, k) => { if (k) seg.rotation.z = -s * g * 0.6; });
+    a.hand.thumbBase.rotation.set(-0.22 - g * 0.55, 0, -s * (0.28 + g * 0.6));
+    a.hand.thumb.forEach((seg, k) => { if (k) seg.rotation.z = -s * (0.1 + g * 0.55); });
   }
   function applyLeg(l, p, pre, s) {
     const h = p[pre + 'Hip'], k = p[pre + 'Knee'];
@@ -432,6 +448,7 @@ export function buildRobot(M) {
     l.ankle.rotation.z = -s * p[pre + 'HipRoll'];
     l.toe.rotation.x = p[pre + 'Toe'] || 0;
   }
+  let explodeE = 0;
   function applyPose(p) {
     neck.rotation.set(p.headPitch, p.headYaw, p.headRoll || 0);
     waist.rotation.set(p.waistPitch, p.waistYaw, p.waistRoll || 0);
@@ -446,7 +463,6 @@ export function buildRobot(M) {
     pelvis.rotation.set(0, p.rootYaw || 0, p.rootRoll || 0);
   }
 
-  let explodeE = 0;
   function setExplode(e) {
     explodeE = e;
     const off = (o, x, y, z) => { const b = base.get(o); o.position.set(b.x + x * e, b.y + y * e, b.z + z * e); };
